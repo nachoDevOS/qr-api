@@ -1,6 +1,7 @@
 <?php
 
 use App\Banks\BNB\BnbController;
+use App\Banks\Union\UnionController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -31,13 +32,18 @@ Route::middleware('api.key')->prefix('bnb/qr')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| Union - Banco Unión (próximamente)
+| Union - Banco Unión (UNIQR Service — SOAP/XML)
 |--------------------------------------------------------------------------
 */
-// Route::post('/union/qr/notification', [UnionController::class, 'notification']);
-// Route::middleware('api.key')->prefix('union/qr')->group(function () {
-//     Route::post('/generate', [UnionController::class, 'generate']);
-//     Route::post('/status',   [UnionController::class, 'status']);
-//     Route::post('/cancel',   [UnionController::class, 'cancel']);
-//     Route::post('/list',     [UnionController::class, 'list']);
-// });
+
+// Sin API Key — el banco llama a estos endpoints directamente
+Route::post('/union/qr/notification', [UnionController::class, 'notification']);
+Route::get('/union/reporte-qrs/conciliacion', [UnionController::class, 'conciliation']);
+
+// Con API Key — solo sistemas autorizados pueden usar estos endpoints
+Route::middleware('api.key')->prefix('union/qr')->group(function () {
+    Route::post('/generate', [UnionController::class, 'generate']);
+    Route::post('/status',   [UnionController::class, 'status']);
+    Route::post('/cancel',   [UnionController::class, 'cancel']);
+    Route::post('/list',     [UnionController::class, 'list']);
+});

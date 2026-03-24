@@ -8,8 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Microservicio de **generación de QR de cobro bancario** construido en Laravel 12. Otros sistemas le envían una petición y este microservicio se conecta al banco, genera el QR y lo devuelve como imagen base64. El cliente final escanea el QR con su app bancaria y paga.
 
-**Banco actual:** BNB (Banco Nacional de Bolivia)
-**Banco próximo:** Banco Unión (estructura ya preparada)
+**Bancos integrados:** BNB (Banco Nacional de Bolivia), Banco Unión
 
 ---
 
@@ -45,16 +44,24 @@ php artisan test --filter NombreDelTest
 # API Key propia — se envía en el header X-API-Key para proteger los endpoints
 API_KEY=...
 
-# Credenciales otorgadas por el BNB
+# BNB - Banco Nacional de Bolivia
 BNB_ACCOUNT_ID=...
 BNB_AUTHORIZATION_ID=...
-
-# URLs del BNB (ambiente de pruebas por defecto)
 BNB_AUTH_URL=http://test.bnb.com.bo/ClientAuthentication.API/api/v1/auth
 BNB_QR_URL=http://test.bnb.com.bo/QRSimple.API/api/v1/main
+
+# Banco Unión — UNIQR Service (SOAP/XML)
+UNION_USUARIO=...
+UNION_CONTRASENA=...
+UNION_NRO_COMERCIO=...
+UNION_AES_KEY=12345678            # clave de cifrado AES del password (pruebas)
+UNION_CERT_PATH=/ruta/cert.pem    # certificado X509 entregado por el banco
+UNION_KEY_PATH=/ruta/privkey.pem  # clave privada del certificado
+UNION_WSDL_URL=https://test-unbunqr.bancounion.com.bo/WS_QR/BunQR.svc?wsdl
+UNION_CONCILIATION_TOKEN=...      # token Bearer que el banco usa para pedir conciliación
 ```
 
-Para producción cambiar las URLs a `https://www.bnb.com.bo/PortalBNB/Api/OpenBanking` y poner `APP_DEBUG=false`.
+Para producción: cambiar URLs a los endpoints de producción y poner `APP_DEBUG=false`.
 
 ---
 
@@ -68,18 +75,21 @@ app/
 │   ├── Contracts/
 │   │   └── QrBankServiceInterface.php  ← interfaz que todos los bancos deben implementar
 │   ├── BNB/
-│   │   ├── BnbService.php              ← conexión con API del BNB
+│   │   ├── BnbService.php              ← conexión REST/JSON con API del BNB (Bearer JWT)
 │   │   └── BnbController.php           ← endpoints HTTP del BNB
-│   └── Union/                          ← preparado para Banco Unión
+│   └── Union/
+│       ├── UnionService.php            ← conexión SOAP/XML con Banco Unión (firma X509)
+│       └── UnionController.php         ← endpoints HTTP de Banco Unión
 ├── Console/Commands/
 │   └── BnbUpdateCredentials.php        ← comando artisan para cambiar credenciales BNB
 ├── Http/Middleware/
 │   └── ValidateApiKey.php              ← protege endpoints con X-API-Key header
 └── Models/
-    └── QrCode.php                      ← registro de todos los QRs generados
+    └── QrCode.php                      ← registro de todos los QRs generados (todos los bancos)
 
 config/
-└── bnb.php                             ← configuración del BNB (URLs, TTL del token)
+├── bnb.php                             ← configuración del BNB (URLs, TTL del token)
+└── union.php                           ← configuración de Banco Unión (WSDL, certs, AES key)
 
 routes/
 └── api.php                             ← rutas organizadas por banco con prefijo /bnb/, /union/
@@ -128,7 +138,7 @@ Accept: application/json
 X-API-Key: {valor de API_KEY en .env}   ← excepto /notification
 ```
 
-### BNB - Banco Nacional de Bolivia
+### BNB - Banco Nacional de Bolivia (REST/JSON)
 
 | Método | URL | Descripción | Auth |
 |--------|-----|-------------|------|
@@ -137,6 +147,21 @@ X-API-Key: {valor de API_KEY en .env}   ← excepto /notification
 | POST | `/api/bnb/qr/cancel` | Cancela un QR | X-API-Key |
 | POST | `/api/bnb/qr/list` | Lista QRs por fecha | X-API-Key |
 | POST | `/api/bnb/qr/notification` | El banco avisa que se pagó | Sin auth |
+
+### Banco Unión (SOAP/XML — UNIQR Service)
+
+| Método | URL | Descripción | Auth |
+|--------|-----|-------------|------|
+| POST | `/api/union/qr/generate` | Genera QR de cobro | X-API-Key |
+| POST | `/api/union/qr/status` | Consulta estado del QR | X-API-Key |
+| POST | `/api/union/qr/cancel` | Anula un QR | X-API-Key |
+| POST | `/api/union/qr/list` | Lista QRs por fecha | X-API-Key |
+| POST | `/api/union/qr/notification` | El banco avisa que se pagó (XML) | Sin auth |
+| GET  | `/api/union/reporte-qrs/conciliacion` | El banco pide conciliación diaria | Bearer token de Unión |
+
+**Campos extra en `generate` para Unión:**
+- `validez`: `U`=único, `D`=día N pagos, `C`=día 1 pago, `S`=semana, `M`=mes, `A`=año (default: `U` si `single_use=true`)
+- `nro_max_pagos`: máximo de pagos permitidos (default: 1)
 
 ### Ejemplos de body
 
@@ -204,14 +229,25 @@ X-API-Key: {valor de API_KEY en .env}   ← excepto /notification
 
 ---
 
-## Cómo agregar un nuevo banco (Banco Unión u otro)
+## Cómo agregar un nuevo banco
 
-1. Crear `app/Banks/Union/UnionService.php` implementando `QrBankServiceInterface`
-2. Crear `app/Banks/Union/UnionController.php`
-3. Crear `config/union.php` con las URLs y credenciales del banco
+1. Crear `app/Banks/NuevoBanco/NuevoBancoService.php` implementando `QrBankServiceInterface`
+2. Crear `app/Banks/NuevoBanco/NuevoBancoController.php`
+3. Crear `config/nuevobanco.php` con las URLs y credenciales del banco
 4. Agregar variables al `.env` y `.env.example`
-5. Descomentar las rutas de Union en `routes/api.php`
+5. Agregar las rutas en `routes/api.php` con prefijo `/nuevobanco/qr/`
 6. Crear comando Artisan si el banco requiere cambio de credenciales inicial
+
+## Detalles técnicos de Banco Unión
+
+- **Protocolo:** SOAP/XML — un único método `BunApi` con XML como parámetro
+- **Autenticación:** la contraseña se encripta con AES-256-ECB; clave = SHA256 binario del valor de `UNION_AES_KEY`
+- **Firma digital:** el XML se firma antes de enviarse (Enveloping Signature, RSA-SHA1, X509)
+- **Certificados:** el banco entrega el certificado X509 y la clave privada en formato `.pem`
+- **Servicios SOAP:** `QR_001`=generar, `QR_002`=verificar, `QR_003`=anular, `QR_004`=recuperar por fecha
+- **Estados que devuelve el banco:** `H`=Habilitado (sin usar), `P`=Pagado, `A`=Anulado, `V`=Vencido
+- **Notificación:** el banco envía XML firmado a nuestro endpoint; respondemos con XML `<Codigo>000</Codigo>`
+- **Conciliación:** el banco llama con GET y Bearer token al endpoint `/api/union/reporte-qrs/conciliacion`
 
 ---
 
@@ -219,5 +255,7 @@ X-API-Key: {valor de API_KEY en .env}   ← excepto /notification
 
 - **Primera vez con credenciales BNB:** ejecutar `php artisan bnb:update-credentials` antes de cualquier otra cosa
 - **Token BNB:** se obtiene automáticamente y se cachea. Si expira, se renueva solo
+- **El BNB devuelve el token en el campo `message`** (no en `token`), es un detalle particular de su API
+- **Banco Unión — certificados:** el banco entrega los archivos `.pem`; configurar las rutas en `UNION_CERT_PATH` y `UNION_KEY_PATH`
+- **Banco Unión — AES key en pruebas:** el banco usa `"12345678"` como clave de prueba; en producción cambia a la clave real
 - **Notificación de pagos en desarrollo:** el banco no puede llamar a `localhost`. Usar [ngrok](https://ngrok.com): `ngrok http 8000` y registrar la URL pública en el banco
-- **El banco devuelve el token en el campo `message`** (no en `token`), es un detalle particular de la API del BNB
