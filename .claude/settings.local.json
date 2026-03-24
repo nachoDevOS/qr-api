@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E '\\\\.\\(php|js|json|md|xml\\)$')",
+      "Bash(xargs ls:*)"
+    ]
+  }
+}
