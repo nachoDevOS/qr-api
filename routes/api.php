@@ -1,30 +1,43 @@
 <?php
 
-use App\Http\Controllers\QrController;
+use App\Banks\BNB\BnbController;
 use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| QR API - Banco Nacional de Bolivia
+| QR API - Multi Banco
 |--------------------------------------------------------------------------
-| Endpoints para generación y gestión de QRs de cobro.
-| Todos los requests deben ser application/json.
+| Cada banco tiene su propio prefijo: /api/bnb/..., /api/union/...
+| Para agregar un nuevo banco, crear app/Banks/NuevoBanco/ y agregar
+| sus rutas aquí con el prefijo correspondiente.
 */
 
-Route::prefix('qr')->group(function () {
+/*
+|--------------------------------------------------------------------------
+| BNB - Banco Nacional de Bolivia
+|--------------------------------------------------------------------------
+*/
 
-    // Genera un nuevo QR de cobro
-    Route::post('/generate', [QrController::class, 'generate']);
+// Sin API Key — el banco llama a este endpoint directamente al recibir un pago
+Route::post('/bnb/qr/notification', [BnbController::class, 'notification']);
 
-    // Consulta el estado de un QR (1=No Usado, 2=Usado, 3=Expirado, 4=Con Error)
-    Route::post('/status', [QrController::class, 'status']);
-
-    // Cancela un QR de uso único no utilizado
-    Route::post('/cancel', [QrController::class, 'cancel']);
-
-    // Lista los QRs generados en una fecha determinada
-    Route::post('/list', [QrController::class, 'list']);
-
-    // El banco BNB llama a este endpoint cuando se realiza un pago
-    Route::post('/notification', [QrController::class, 'notification']);
+// Con API Key — solo sistemas autorizados pueden usar estos endpoints
+Route::middleware('api.key')->prefix('bnb/qr')->group(function () {
+    Route::post('/generate', [BnbController::class, 'generate']);
+    Route::post('/status',   [BnbController::class, 'status']);
+    Route::post('/cancel',   [BnbController::class, 'cancel']);
+    Route::post('/list',     [BnbController::class, 'list']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Union - Banco Unión (próximamente)
+|--------------------------------------------------------------------------
+*/
+// Route::post('/union/qr/notification', [UnionController::class, 'notification']);
+// Route::middleware('api.key')->prefix('union/qr')->group(function () {
+//     Route::post('/generate', [UnionController::class, 'generate']);
+//     Route::post('/status',   [UnionController::class, 'status']);
+//     Route::post('/cancel',   [UnionController::class, 'cancel']);
+//     Route::post('/list',     [UnionController::class, 'list']);
+// });

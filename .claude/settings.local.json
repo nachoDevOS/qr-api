@@ -3,7 +3,10 @@
     "allow": [
       "Bash(grep -E '\\\\.\\(php|js|json|md|xml\\)$')",
       "Bash(xargs ls:*)",
-      "Bash(php artisan:*)"
+      "Bash(php artisan:*)",
+      "Bash(php -r \"echo bin2hex\\(random_bytes\\(32\\)\\);\")",
+      "Bash(rm app/Services/BnbService.php)",
+      "Bash(rm app/Http/Controllers/QrController.php)"
     ]
   }
 }

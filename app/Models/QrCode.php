@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 class QrCode extends Model
 {
     protected $fillable = [
-        'bnb_qr_id',
+        'bank',
+        'bank_qr_id',
         'currency',
         'amount',
         'gloss',
@@ -31,11 +32,16 @@ class QrCode extends Model
         'amount'                   => 'decimal:2',
     ];
 
-    // Estados del QR
+    // Estados del QR (1-4 vienen del BNB, 5 es local)
     const STATUS_NO_USADO  = 1;
     const STATUS_USADO     = 2;
     const STATUS_EXPIRADO  = 3;
     const STATUS_CON_ERROR = 4;
+    const STATUS_CANCELADO = 5;
+
+    // Bancos disponibles
+    const BANK_BNB   = 'bnb';
+    const BANK_UNION = 'union';
 
     public function statusLabel(): string
     {
@@ -44,6 +50,7 @@ class QrCode extends Model
             self::STATUS_USADO     => 'Usado',
             self::STATUS_EXPIRADO  => 'Expirado',
             self::STATUS_CON_ERROR => 'Con Error',
+            self::STATUS_CANCELADO => 'Cancelado',
             default                => 'Desconocido',
         };
     }

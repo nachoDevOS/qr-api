@@ -1,32 +1,32 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Banks\BNB;
 
 use App\Models\QrCode;
-use App\Services\BnbService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 use RuntimeException;
 
-class QrController extends Controller
+class BnbController extends Controller
 {
     public function __construct(private BnbService $bnb) {}
 
     /**
      * Genera un QR de cobro y lo guarda en la base de datos.
      *
-     * POST /api/qr/generate
+     * POST /api/bnb/qr/generate
      * Body: { currency, gloss, amount, single_use, expiration_date, additional_data, destination_account_id }
      */
     public function generate(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'currency'              => 'required|in:BOB,USD',
-            'gloss'                 => 'required|string|max:255',
-            'amount'                => 'required|numeric|min:0.01',
-            'single_use'            => 'boolean',
-            'expiration_date'       => 'required|date|after:today',
-            'additional_data'       => 'nullable|string|max:500',
+            'currency'               => 'required|in:BOB,USD',
+            'gloss'                  => 'required|string|max:255',
+            'amount'                 => 'required|numeric|min:0.01',
+            'single_use'             => 'boolean',
+            'expiration_date'        => 'required|date|after:today',
+            'additional_data'        => 'nullable|string|max:500',
             'destination_account_id' => 'required|in:1,2',
         ]);
 
@@ -52,7 +52,8 @@ class QrController extends Controller
         }
 
         $qr = QrCode::create([
-            'bnb_qr_id'              => $result['id'],
+            'bank'                   => 'bnb',
+            'bank_qr_id'             => $result['id'],
             'currency'               => $data['currency'],
             'amount'                 => $data['amount'],
             'gloss'                  => $data['gloss'],
@@ -65,10 +66,10 @@ class QrController extends Controller
         ]);
 
         return response()->json([
-            'success'    => true,
-            'id'         => $qr->id,
-            'bnb_qr_id'  => $result['id'],
-            'qr_image'   => $result['qr'],   // base64 — usarlo como <img src="data:image/png;base64,{qr_image}">
+            'success'        => true,
+            'id'             => $qr->id,
+            'bank_qr_id'     => $result['id'],
+            'qr_image'       => $result['qr'], // base64 — usar como <img src="data:image/png;base64,{qr_image}">
             'expiration_date' => $data['expiration_date'],
         ], 201);
     }
@@ -76,7 +77,7 @@ class QrController extends Controller
     /**
      * Consulta el estado de un QR en el banco y actualiza la base de datos.
      *
-     * POST /api/qr/status
+     * POST /api/bnb/qr/status
      * Body: { qr_id }
      */
     public function status(Request $request): JsonResponse
@@ -98,10 +99,12 @@ class QrController extends Controller
             ], 422);
         }
 
-        QrCode::where('bnb_qr_id', $data['qr_id'])->update([
-            'status_id'  => $result['statusId'],
-            'voucher_id' => $result['voucherId'] ?? null,
-        ]);
+        QrCode::where('bank', 'bnb')
+            ->where('bank_qr_id', $data['qr_id'])
+            ->update([
+                'status_id'  => $result['statusId'],
+                'voucher_id' => $result['voucherId'] ?? null,
+            ]);
 
         return response()->json([
             'success'         => true,
@@ -116,7 +119,7 @@ class QrController extends Controller
     /**
      * Cancela un QR (solo QRs de uso único no utilizados).
      *
-     * POST /api/qr/cancel
+     * POST /api/bnb/qr/cancel
      * Body: { qr_id }
      */
     public function cancel(Request $request): JsonResponse
@@ -138,9 +141,9 @@ class QrController extends Controller
             ], 422);
         }
 
-        QrCode::where('bnb_qr_id', $data['qr_id'])->update([
-            'status_id' => QrCode::STATUS_CON_ERROR,
-        ]);
+        QrCode::where('bank', 'bnb')
+            ->where('bank_qr_id', $data['qr_id'])
+            ->update(['status_id' => QrCode::STATUS_CANCELADO]);
 
         return response()->json(['success' => true, 'message' => 'QR cancelado correctamente']);
     }
@@ -148,7 +151,7 @@ class QrController extends Controller
     /**
      * Lista todos los QRs generados en una fecha determinada.
      *
-     * POST /api/qr/list
+     * POST /api/bnb/qr/list
      * Body: { generation_date } — formato: YYYY-MM-DD
      */
     public function list(Request $request): JsonResponse
@@ -180,7 +183,7 @@ class QrController extends Controller
      * Recibe la notificación de pago enviada por el banco BNB.
      * El banco llama a este endpoint automáticamente cuando alguien paga el QR.
      *
-     * POST /api/qr/notification
+     * POST /api/bnb/qr/notification
      */
     public function notification(Request $request): JsonResponse
     {
@@ -196,13 +199,15 @@ class QrController extends Controller
             'currencyId'          => 'nullable|integer',
         ]);
 
-        QrCode::where('bnb_qr_id', $data['QRId'])->update([
-            'status_id'               => QrCode::STATUS_USADO,
-            'voucher_id'              => $data['VoucherId'] ?? null,
-            'source_bank'             => $data['sourceBankId'] ?? null,
-            'transaction_date'        => now(),
-            'notification_received_at' => now(),
-        ]);
+        QrCode::where('bank', 'bnb')
+            ->where('bank_qr_id', $data['QRId'])
+            ->update([
+                'status_id'                => QrCode::STATUS_USADO,
+                'voucher_id'               => $data['VoucherId'] ?? null,
+                'source_bank'              => $data['sourceBankId'] ?? null,
+                'transaction_date'         => now(),
+                'notification_received_at' => now(),
+            ]);
 
         // El banco espera exactamente esta respuesta
         return response()->json(['success' => true, 'message' => 'OK']);

@@ -1,12 +1,13 @@
 <?php
 
-namespace App\Services;
+namespace App\Banks\BNB;
 
+use App\Banks\Contracts\QrBankServiceInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
-class BnbService
+class BnbService implements QrBankServiceInterface
 {
     private string $authUrl;
     private string $qrUrl;
@@ -60,45 +61,31 @@ class BnbService
      */
     public function updateCredentials(string $newAuthorizationId): array
     {
-        $response = Http::asJson()
+        $response = $this->authenticatedHttp()
             ->post("{$this->authUrl}/UpdateCredentials", [
-                'AccountId'            => $this->accountId,
+                'AccountId'             => $this->accountId,
                 'actualAuthorizationId' => $this->authorizationId,
-                'newAuthorizationId'   => $newAuthorizationId,
+                'newAuthorizationId'    => $newAuthorizationId,
             ]);
 
-        return $response->json();
+        return $response->json() ?? ['success' => false, 'message' => 'Sin respuesta del banco'];
     }
 
-    /**
-     * Genera un QR de cobro simple.
-     * Devuelve el id del QR y la imagen en base64.
-     */
     public function generateQR(array $data): array
     {
         return $this->request('post', "{$this->qrUrl}/getQRWithImageAsync", $data);
     }
 
-    /**
-     * Obtiene el estado de un QR por su ID.
-     * statusId: 1=No Usado, 2=Usado, 3=Expirado, 4=Con Error
-     */
     public function getQRStatus(int $qrId): array
     {
         return $this->request('post', "{$this->qrUrl}/getQRStatusAsync", ['qrId' => $qrId]);
     }
 
-    /**
-     * Cancela un QR (solo QRs de uso único no utilizados).
-     */
     public function cancelQR(int $qrId): array
     {
         return $this->request('post', "{$this->qrUrl}/CancelQRByIdAsync", ['qrId' => $qrId]);
     }
 
-    /**
-     * Lista todos los QRs generados en una fecha determinada.
-     */
     public function listQRsByDate(string $date): array
     {
         return $this->request('post', "{$this->qrUrl}/getQRbyGenerationDateAsync", ['generationDate' => $date]);
@@ -112,7 +99,6 @@ class BnbService
     {
         $response = $this->authenticatedHttp()->{$method}($url, $data);
 
-        // Si el token expiró, lo renovamos y reintentamos
         if ($response->status() === 401) {
             $this->refreshToken();
             $response = $this->authenticatedHttp()->{$method}($url, $data);
